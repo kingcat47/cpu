@@ -8,66 +8,41 @@
 
 #include "include/memory.h"
 
+#include <stdint.h>
 #include <string.h>
 
 /*
- * @brief 메모리의 모든 영역을 0으로 초기화 합니다
- * @param Memory *memory 메모리 인스턴스를 가리키는 포인터
+ * @brief 메모리의 모든 영역을 0으로 초기화합니다
+ * @param memory 메모리 인스턴스를 가리키는 포인터
+ * @returns 없음 (void)
  */
 void init_memory(Memory *memory) {
     memset(memory->data, 0, MEMORY_SIZE);
 }
 
 /*
- * @brief 지정된 주소에서 값을 읽습니다 (캐시 → 메모리 Read-Through 모사)
- * @param Memory *memory 메모리 인스턴스를 가리키는 포인터
- * @param uint16_t address 읽을 주소
- * @return uint8_t 읽은 값
+ * @brief 메모리에서 값을 읽습니다 (캐시 포함)
+ * @param memory Memory 구조체 포인터 (캐시 + 실제 메모리 포함)
+ * @param address 읽을 메모리 주소
+ * @returns 읽은 값 (1바이트), 주소가 잘못된 경우 0 반환
  */
 uint8_t memory_read(Memory *memory, uint16_t address) {
-    if (address >= MEMORY_SIZE) return 0;
-
-    uint16_t index = address % CACHE_SIZE;
-    CacheLine *line = &memory->cache[index];
-
-    if (line->valid && line->address == address) {
-        return line->data; // 캐시 히트
+    if(address >= MEMORY_SIZE) {
+        return 0; // 잘못된 주소 접근 시 0 반환
     }
-
-    // 캐시 미스 → 캐시라인 교체
-    if (line->valid && line->dirty) {
-        memory->data[line->address] = line->data;
-    }
-
-    line->address = address;
-    line->data = memory->data[address];
-    line->valid = 1;
-    line->dirty = 0;
-
-    return line->data;
+    return cache_read(&memory->cache, memory->data, MEMORY_SIZE, address);
 }
 
-
 /*
- * @brief 지정된 주소에 값을 기록합니다 (캐시 → 메모리 Write-Back 모사)
- * @param Memory *memory 메모리 인스턴스를 가리키는 포인터
- * @param uint16_t address 기록할 주소
- * @param uint8_t value 기록할 값
+ * @brief 메모리에 값을 기록합니다 (캐시 포함)
+ * @param memory Memory 구조체 포인터 (캐시 + 실제 메모리 포함)
+ * @param address 기록할 메모리 주소
+ * @param value 기록할 값 (1바이트)
+ * @returns 없음 (void)
  */
 void memory_write(Memory *memory, uint16_t address, uint8_t value) {
-    if (address >= MEMORY_SIZE) return;
-
-    uint16_t index = address % CACHE_SIZE;
-    CacheLine *line = &memory->cache[index];
-
-    // 기존 캐시라인이 다른 주소를 가리키고 dirty하면 메모리에 반영
-    if (line->valid && line->dirty && line->address != address) {
-        memory->data[line->address] = line->data;
+    if(address >= MEMORY_SIZE) {
+        return; // 잘못된 주소 접근 시 아무 작업도 하지 않음
     }
-
-    // 캐시 업데이트
-    line->address = address;
-    line->data = value;
-    line->valid = 1;
-    line->dirty = 1;
+    cache_write(&memory->cache, memory->data, MEMORY_SIZE, address, value);
 }
